@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>note 記事自動生成ツール</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    background: #f5f5f0;
+    color: #333;
+    min-height: 100vh;
+  }
+  header {
+    background: #fff;
+    border-bottom: 2px solid #41c9b4;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 20px; font-weight: 700; color: #222; }
+  header span { font-size: 13px; color: #888; }
+  .container { max-width: 860px; margin: 32px auto; padding: 0 16px 80px; }
+
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  .card h2 { font-size: 14px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+
+  .api-row { display: flex; gap: 8px; align-items: center; }
+  .api-row input {
+    flex: 1; padding: 10px 14px; border: 1.5px solid #ddd; border-radius: 8px;
+    font-size: 14px; font-family: monospace; color: #555;
+  }
+  .api-row input:focus { outline: none; border-color: #41c9b4; }
+  .save-btn {
+    padding: 10px 16px; border: none; border-radius: 8px;
+    background: #eee; color: #555; font-size: 13px; cursor: pointer;
+  }
+  .save-btn:hover { background: #ddd; }
+
+  .input-area { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .input-area input {
+    flex: 1; min-width: 240px; padding: 14px 16px;
+    border: 2px solid #ddd; border-radius: 10px; font-size: 16px;
+    transition: border-color .2s;
+  }
+  .input-area input:focus { outline: none; border-color: #41c9b4; }
+  .input-area input::placeholder { color: #bbb; }
+
+  .gen-btn {
+    padding: 14px 28px; border: none; border-radius: 10px;
+    background: #41c9b4; color: #fff; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: background .15s, transform .1s;
+    white-space: nowrap;
+  }
+  .gen-btn:hover { background: #2fb8a3; }
+  .gen-btn:active { transform: scale(.97); }
+  .gen-btn:disabled { background: #aaa; cursor: not-allowed; transform: none; }
+
+  /* model selector */
+  .model-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .model-row label { font-size: 13px; color: #666; font-weight: 600; }
+  .model-btn {
+    padding: 6px 14px; border: 1.5px solid #ddd; border-radius: 20px;
+    background: #fff; font-size: 13px; cursor: pointer; color: #555; transition: all .15s;
+  }
+  .model-btn.active { border-color: #41c9b4; background: #f0fdf9; color: #2fb8a3; font-weight: 700; }
+  .model-btn:hover:not(.active) { border-color: #aaa; }
+  .model-speed { font-size: 11px; color: #aaa; margin-left: 3px; }
+
+  /* progress */
+  .progress-wrap { display: none; margin-top: 14px; }
+  .progress-wrap.show { display: block; }
+  .progress-bar-bg {
+    height: 6px; background: #eee; border-radius: 4px; overflow: hidden; margin-bottom: 8px;
+  }
+  .progress-bar {
+    height: 100%; background: linear-gradient(90deg, #41c9b4, #2fb8a3);
+    border-radius: 4px; width: 0%; transition: width .3s;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+  .progress-status { font-size: 13px; color: #888; display: flex; justify-content: space-between; }
+
+  /* stream preview */
+  .stream-preview {
+    display: none; background: #f9f9f9; border: 1px solid #eee;
+    border-radius: 8px; padding: 14px; margin-top: 10px;
+    font-size: 13px; color: #666; line-height: 1.7; max-height: 180px;
+    overflow-y: auto; white-space: pre-wrap; font-family: monospace;
+  }
+  .stream-preview.show { display: block; }
+
+  /* output sections */
+  #output { display: none; }
+  #output.show { display: block; }
+
+  .titles-grid { display: grid; gap: 10px; }
+  .title-card {
+    border: 1.5px solid #e8e8e8; border-radius: 8px; padding: 14px 16px;
+    display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .title-card:hover { border-color: #41c9b4; background: #f0fdf9; }
+  .title-num {
+    background: #41c9b4; color: #fff; border-radius: 50%;
+    width: 24px; height: 24px; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+  }
+  .title-text { font-size: 15px; line-height: 1.5; }
+
+  .toc-list { list-style: none; counter-reset: toc; }
+  .toc-list li {
+    counter-increment: toc;
+    padding: 8px 0; border-bottom: 1px solid #f0f0f0;
+    font-size: 14px; display: flex; align-items: baseline; gap: 8px;
+  }
+  .toc-list li:last-child { border-bottom: none; }
+  .toc-list li::before {
+    content: counter(toc);
+    background: #f0fdf9; color: #41c9b4; border-radius: 4px;
+    padding: 1px 7px; font-size: 12px; font-weight: 700; flex-shrink: 0;
+  }
+
+  /* 無料/有料エリア */
+  .zone-free { background: #f9fffe; border-radius: 8px 8px 0 0; padding: 16px; }
+  .zone-paid { background: #fff8f0; border-radius: 0 0 8px 8px; padding: 16px; position: relative; }
+  .zone-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 20px; margin-bottom: 12px;
+  }
+  .zone-label.free { background: #d4f5ef; color: #1a9b86; }
+  .zone-label.paid { background: #ffe0b0; color: #b06000; }
+
+  /* ドラッグ境界線 */
+  .divider-wrap {
+    position: relative; height: 36px; display: flex; align-items: center;
+    cursor: ns-resize; user-select: none; z-index: 10;
+  }
+  .divider-line {
+    width: 100%; height: 3px;
+    background: repeating-linear-gradient(90deg, #f59e0b 0 10px, transparent 10px 16px);
+    border-radius: 2px;
+  }
+  .divider-badge {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    background: #f59e0b; color: #fff; font-size: 12px; font-weight: 700;
+    padding: 4px 14px; border-radius: 20px; white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0,0,0,.15);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .divider-wrap:hover .divider-badge { background: #d97706; }
+  .divider-wrap.dragging .divider-badge { background: #b45309; }
+
+  /* 段落 */
+  .para {
+    margin-bottom: 1em; line-height: 1.9; font-size: 15px; color: #444;
+    white-space: pre-wrap;
+  }
+  .para:last-child { margin-bottom: 0; }
+  .para.heading {
+    font-size: 17px; font-weight: 700; color: #222; margin-top: 1.4em; margin-bottom: .5em;
+  }
+
+  .body-stats {
+    display: flex; gap: 16px; font-size: 13px; color: #aaa;
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f0f0;
+    flex-wrap: wrap;
+  }
+  .body-stats span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.free { background: #41c9b4; }
+  .dot.paid { background: #f59e0b; }
+
+  /* 見出し画像 */
+  .thumb-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+  }
+  #thumbnailCanvas {
+    width: 100%; max-width: 760px; border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.18); display: block; cursor: pointer;
+  }
+  .thumb-controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .thumb-select {
+    padding: 7px 14px; border: 1.5px solid #ddd; border-radius: 8px;
+    background: #fff; font-size: 13px; cursor: pointer; color: #444;
+    transition: all .15s;
+  }
+  .thumb-select:hover, .thumb-select.active { border-color: #41c9b4; color: #1a9b86; background: #f0fdf9; }
+  .dl-btn {
+    padding: 9px 20px; border: none; border-radius: 8px;
+    background: #222; color: #FFD700; font-size: 13px; font-weight: 700;
+    cursor: pointer; transition: background .15s;
+  }
+  .dl-btn:hover { background: #000; }
+
+  /* 有料/無料スイッチ */
+  .mode-switch {
+    display: flex; align-items: center; gap: 0;
+    background: #f0f0f0; border-radius: 10px; padding: 4px; margin-bottom: 14px;
+    width: fit-content;
+  }
+  .mode-btn {
+    padding: 9px 22px; border: none; border-radius: 7px;
+    background: transparent; font-size: 14px; font-weight: 600;
+    cursor: pointer; color: #888; transition: all .18s; white-space: nowrap;
+  }
+  .mode-btn.active-paid { background: #fff; color: #e85d00; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .mode-btn.active-free { background: #fff; color: #1a9b86; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .mode-badge {
+    display: inline-block; font-size: 10px; padding: 1px 7px;
+    border-radius: 10px; margin-left: 5px; font-weight: 700; vertical-align: middle;
+  }
+  .mode-badge.paid { background: #fff0e8; color: #e85d00; }
+  .mode-badge.free { background: #e8faf6; color: #1a9b86; }
+
+  .price-box {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+  .price-value { font-size: 36px; font-weight: 700; color: #222; }
+  .price-value span { font-size: 18px; color: #888; margin-left: 4px; }
+  .price-reason { font-size: 14px; color: #666; max-width: 500px; line-height: 1.6; }
+
+  .copy-btn {
+    padding: 8px 14px; border: 1.5px solid #ddd; border-radius: 7px;
+    background: #fff; font-size: 13px; cursor: pointer; color: #555;
+    transition: all .15s;
+  }
+  .copy-btn:hover { border-color: #41c9b4; color: #41c9b4; }
+
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .section-header h2 { font-size: 14px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .05em; }
+
+  .char-count { font-size: 13px; color: #aaa; }
+
+  .error-msg {
+    background: #fff0f0; border: 1.5px solid #ffaaaa; border-radius: 8px;
+    padding: 14px 16px; color: #c00; font-size: 14px; margin-top: 12px; display: none;
+  }
+  .error-msg.show { display: block; }
+
+  /* ===================== スマホ対応 ===================== */
+  @media (max-width: 600px) {
+    header { padding: 12px 16px; gap: 8px; }
+    header h1 { font-size: 16px; }
+    header span { display: none; }
+
+    .container { margin: 12px auto; padding: 0 10px 60px; }
+
+    .card { padding: 16px 14px; margin-bottom: 14px; border-radius: 10px; }
+    .card h2 { font-size: 12px; margin-bottom: 10px; }
+
+    /* 有料/無料スイッチ */
+    .mode-switch { width: 100%; }
+    .mode-btn { flex: 1; padding: 9px 8px; font-size: 13px; text-align: center; }
+    .mode-badge { display: none; }
+
+    /* モデル選択 */
+    .model-row { gap: 6px; }
+    .model-row label { width: 100%; margin-bottom: 2px; }
+    .model-btn { padding: 6px 10px; font-size: 12px; }
+    .model-speed { display: none; }
+
+    /* キーワード入力 */
+    .input-area { flex-direction: column; }
+    .input-area input { min-width: unset; width: 100%; font-size: 16px; }
+    .gen-btn { width: 100%; padding: 15px; font-size: 16px; }
+
+    /* セクションヘッダー（コピーボタン群） */
+    .section-header { flex-wrap: wrap; gap: 8px; }
+    .section-header > div { display: flex; flex-wrap: wrap; gap: 6px; }
+    .copy-btn { padding: 7px 10px; font-size: 12px; }
+    .dl-btn { padding: 8px 14px; font-size: 12px; }
+
+    /* タイトルカード */
+    .title-card { padding: 12px; }
+    .title-text { font-size: 14px; }
+
+    /* 本文統計 */
+    .body-stats { gap: 10px; font-size: 12px; }
+
+    /* 境界線バッジ */
+    .divider-badge { font-size: 11px; padding: 4px 10px; }
+
+    /* 価格 */
+    .price-value { font-size: 28px; }
+    .price-reason { font-size: 13px; }
+
+    /* ストリームプレビュー */
+    .stream-preview { font-size: 12px; max-height: 120px; }
+
+    /* API入力 */
+    .api-row input { font-size: 13px; }
+
+    /* サムネコントロール */
+    .thumb-controls { gap: 8px; }
+    .thumb-select { padding: 8px 12px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="7" fill="#41c9b4"/>
+    <path d="M7 8h14M7 14h10M7 20h12" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+  </svg>
+  <h1>note 記事自動生成ツール</h1>
+  <span>Powered by Claude AI</span>
+</header>
+
+<div class="container">
+
+  <!-- API Key -->
+  <div class="card">
+    <h2>Claude API Key</h2>
+    <div class="api-row">
+      <input type="password" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off">
+      <button class="save-btn" onclick="saveKey()">保存</button>
+    </div>
+    <div style="font-size:12px;color:#aaa;margin-top:8px;">
+      キーはブラウザのみに保存されます。外部送信されません。
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="card">
+    <h2>キーワード / タイトル案</h2>
+
+    <!-- 有料/無料スイッチ -->
+    <div class="mode-switch">
+      <button class="mode-btn active-paid" id="modePaid" onclick="setMode('paid')">
+        💰 有料記事 <span class="mode-badge paid">4000字+</span>
+      </button>
+      <button class="mode-btn" id="modeFree" onclick="setMode('free')">
+        🆓 無料記事（お試し） <span class="mode-badge free">1000字</span>
+      </button>
+    </div>
+
+    <!-- モデル選択 -->
+    <div class="model-row">
+      <label>モデル：</label>
+      <button class="model-btn active" data-model="claude-sonnet-4-6" onclick="selectModel(this)">
+        Sonnet 4.6 <span class="model-speed">⚡ 速い・高品質（推奨）</span>
+      </button>
+      <button class="model-btn" data-model="claude-haiku-4-5-20251001" onclick="selectModel(this)">
+        Haiku 4.5 <span class="model-speed">⚡⚡ 最速・軽量</span>
+      </button>
+      <button class="model-btn" data-model="claude-opus-4-6" onclick="selectModel(this)">
+        Opus 4.6 <span class="model-speed">🐢 最高品質・低速</span>
+      </button>
+    </div>
+
+    <div class="input-area">
+      <input type="text" id="keyword" placeholder="例：副業で月5万円稼ぐ方法" maxlength="100"
+             onkeydown="if(event.key==='Enter' && !event.isComposing) generate()">
+      <button class="gen-btn" id="genBtn" onclick="generate()">✦ 記事を生成</button>
+    </div>
+
+    <!-- プログレス -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="progress-status">
+        <span id="progressLabel">生成中…</span>
+        <span id="progressTokens"></span>
+      </div>
+    </div>
+
+    <!-- ストリームプレビュー -->
+    <div class="stream-preview" id="streamPreview"></div>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <!-- Output -->
+  <div id="output">
+
+    <!-- 見出し画像 -->
+    <div class="card">
+      <div class="section-header">
+        <h2>見出し画像</h2>
+        <button class="dl-btn" onclick="downloadThumb()">PNG でダウンロード</button>
+      </div>
+      <div class="thumb-wrap">
+        <canvas id="thumbnailCanvas" width="1280" height="670"></canvas>
+        <div class="thumb-controls" id="thumbTitleBtns"></div>
+      </div>
+    </div>
+
+    <!-- タイトル3案 -->
+    <div class="card">
+      <div class="section-header">
+        <h2>タイトル 3案</h2>
+      </div>
+      <div class="titles-grid" id="titlesGrid"></div>
+    </div>
+
+    <!-- 目次 -->
+    <div class="card">
+      <div class="section-header">
+        <h2>目次構成</h2>
+        <button class="copy-btn" onclick="copyText('tocText')">コピー</button>
+      </div>
+      <ul class="toc-list" id="tocList"></ul>
+      <textarea id="tocText" style="display:none"></textarea>
+    </div>
+
+    <!-- 本文 -->
+    <div class="card">
+      <div class="section-header">
+        <h2>本文</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="copy-btn" onclick="copySection('free')">無料コピー</button>
+          <button class="copy-btn" onclick="copySection('paid')">有料コピー</button>
+          <button class="copy-btn" onclick="copySection('all')">全文コピー</button>
+        </div>
+      </div>
+
+      <!-- 無料エリア -->
+      <div class="zone-free" id="zoneFree">
+        <div class="zone-label free">無料公開</div>
+        <div id="parasFree"></div>
+      </div>
+
+      <!-- ドラッグ境界線・有料エリア（有料モード時のみ表示） -->
+      <div id="paywallSection">
+        <div class="divider-wrap" id="dividerWrap"
+             onmousedown="startDrag(event)" ontouchstart="startDrag(event)">
+          <div class="divider-line"></div>
+          <div class="divider-badge">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1v10M1 6l5-5 5 5M1 6l5 5 5-5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+            ここをドラッグして境界を移動
+          </div>
+        </div>
+        <div class="zone-paid" id="zonePaid">
+          <div class="zone-label paid">有料公開</div>
+          <div id="parasPaid"></div>
+        </div>
+      </div>
+
+      <!-- 統計 -->
+      <div class="body-stats">
+        <span><span class="dot free"></span>無料: <strong id="freeCount">―</strong>字</span>
+        <span><span class="dot paid"></span>有料: <strong id="paidCount">―</strong>字</span>
+        <span>合計: <strong id="charCount">―</strong>字</span>
+      </div>
+
+      <textarea id="bodyText" style="display:none"></textarea>
+    </div>
+
+    <!-- 推奨価格 -->
+    <div class="card">
+      <div class="section-header">
+        <h2>推奨価格</h2>
+      </div>
+      <div class="price-box">
+        <div class="price-value" id="priceValue">―<span>円</span></div>
+        <div class="price-reason" id="priceReason"></div>
+      </div>
+    </div>
+
+  </div><!-- /output -->
+</div>
+
+<script>
+let selectedModel = 'claude-sonnet-4-6';
+let allParas = [];
+let dividerIdx = 0;
+let articleMode = 'paid'; // 'paid' | 'free'
+
+function setMode(mode) {
+  articleMode = mode;
+  document.getElementById('modePaid').className = 'mode-btn' + (mode === 'paid' ? ' active-paid' : '');
+  document.getElementById('modeFree').className = 'mode-btn' + (mode === 'free' ? ' active-free' : '');
+  // 有料/無料切替で境界UI表示を切り替え
+  document.getElementById('paywallSection').style.display = mode === 'paid' ? '' : 'none';
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('claude_api_key');
+  if (saved) document.getElementById('apiKey').value = saved;
+});
+
+function saveKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (key) { localStorage.setItem('claude_api_key', key); alert('APIキーを保存しました。'); }
+}
+
+function selectModel(btn) {
+  document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedModel = btn.dataset.model;
+}
+
+function setLoading(on) {
+  document.getElementById('progressWrap').classList.toggle('show', on);
+  document.getElementById('genBtn').disabled = on;
+  document.getElementById('genBtn').textContent = on ? '生成中…' : '✦ 記事を生成';
+  if (!on) {
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('progressLabel').textContent = '生成中…';
+    document.getElementById('progressTokens').textContent = '';
+    document.getElementById('streamPreview').classList.remove('show');
+    document.getElementById('streamPreview').textContent = '';
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function clearError() {
+  document.getElementById('errorMsg').classList.remove('show');
+}
+
+function updateProgress(chars) {
+  // 4000字目標に対する進捗（本文だけ）
+  const pct = Math.min(95, Math.round((chars / 5500) * 100));
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressTokens').textContent = `受信: ${chars.toLocaleString()}字`;
+}
+
+const STAGES = ['タイトル案を考案中…', '目次を構成中…', '本文を執筆中…', '価格を算出中…', '仕上げ中…'];
+
+async function generate() {
+  const keyword = document.getElementById('keyword').value.trim();
+  const apiKey  = document.getElementById('apiKey').value.trim();
+
+  if (!keyword) { alert('キーワードまたはタイトル案を入力してください。'); return; }
+  if (!apiKey)  { alert('Claude API Key を入力してください。'); return; }
+
+  clearError();
+  setLoading(true);
+  document.getElementById('output').classList.remove('show');
+
+  const streamEl   = document.getElementById('streamPreview');
+  const labelEl    = document.getElementById('progressLabel');
+  streamEl.classList.add('show');
+
+  const commonStyle = `
+文体・装飾のルール（全体を通して守ること）：
+- 絵文字を積極的に使い、視覚的にカラフルで読みやすくすること（例：✅ 📌 💡 🔑 ⚡ 🎯 💰 🚀 📝 ⭐ など）
+- 重要なポイントは「✅ 〜」「💡 〜」などで箇条書きにする
+- 数字・ステップがある場合は「① ② ③」や「STEP1 STEP2」などで明示する
+- 【 】や『 』などの囲み文字で強調する
+- 読者に語りかけるような親しみやすいトーンにする`;
+
+  const prompt = articleMode === 'free'
+  ? `あなたはnote（note.com）のプロライターです。
+以下のキーワード・テーマをもとに、無料公開用のお試し記事を日本語で生成してください。
+
+【テーマ】${keyword}
+
+以下の形式で出力してください。タグの外には何も書かないでください。
+
+<TITLES>
+タイトル案1（30文字以内、「無料」「お試し」「入門」などお試し感のある表現を入れる）
+タイトル案2（30文字以内）
+タイトル案3（30文字以内）
+</TITLES>
+
+<TOC>
+章タイトル1
+章タイトル2
+章タイトル3
+</TOC>
+
+<BODY>
+本文（1000字前後。読者の興味を引く内容にして、「もっと詳しく知りたい方は有料版へ」という流れで締める。## 見出しを使ってよい）
+</BODY>
+
+<PRICE>
+0
+</PRICE>
+
+<PRICE_REASON>
+無料公開記事です。有料版では詳細なノウハウを公開しています。
+</PRICE_REASON>
+${commonStyle}`
+  : `あなたはnote（note.com）のプロライターです。
+以下のキーワード・テーマをもとに、売れるnote記事を日本語で生成してください。
+
+【テーマ】${keyword}
+
+以下の形式で出力してください。タグの外には何も書かないでください。
+
+<TITLES>
+タイトル案1（30文字以内）
+タイトル案2（30文字以内）
+タイトル案3（30文字以内）
+</TITLES>
+
+<TOC>
+章タイトル1
+章タイトル2
+章タイトル3
+章タイトル4
+章タイトル5
+</TOC>
+
+<BODY>
+本文テキスト（4000字以上）
+</BODY>
+
+<PRICE>
+数字のみ（例: 500）
+</PRICE>
+
+<PRICE_REASON>
+価格設定の根拠（2〜3文）
+</PRICE_REASON>
+
+本文の構成ルール（必ず守ること）：
+- 全体で4000字以上書くこと
+- 冒頭の無料公開部分（イントロ〜第1章相当）にだけ ## や ### などの見出しを使ってよい
+- 有料公開部分（重要なノウハウ・実践内容・核心部分）には見出し（##・###）を一切使わないこと。見出しはnoteの目次に表示されてしまい、有料部分の内容がバレるため
+- 有料部分は見出しなしで、段落・改行・絵文字・装飾テキストだけで読みやすく構成すること
+- 読者が「買ってよかった」と思える実践的な内容にすること
+${commonStyle}`;
+
+  let fullText = '';
+  let stageIdx = 0;
+  let charsSoFar = 0;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        max_tokens: 8000,
+        stream: true,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTPエラー ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const json = line.slice(6).trim();
+        if (json === '[DONE]') continue;
+
+        let evt;
+        try { evt = JSON.parse(json); } catch { continue; }
+
+        if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+          fullText += evt.delta.text;
+          charsSoFar = fullText.length;
+
+          // ステージ更新
+          if (charsSoFar > 200 && stageIdx === 0) { stageIdx = 1; labelEl.textContent = STAGES[1]; }
+          if (charsSoFar > 500 && stageIdx === 1) { stageIdx = 2; labelEl.textContent = STAGES[2]; }
+          if (charsSoFar > 4500 && stageIdx === 2) { stageIdx = 3; labelEl.textContent = STAGES[3]; }
+          if (charsSoFar > 5000 && stageIdx === 3) { stageIdx = 4; labelEl.textContent = STAGES[4]; }
+
+          updateProgress(charsSoFar);
+
+          // プレビュー（末尾200字）
+          streamEl.textContent = fullText.slice(-200);
+          streamEl.scrollTop = streamEl.scrollHeight;
+        }
+      }
+    }
+
+    // 完了 → パース
+    document.getElementById('progressBar').style.width = '100%';
+    labelEl.textContent = '完了！';
+
+    const parsed = parseTagged(fullText);
+    if (!parsed.body) {
+      throw new Error('本文が取得できませんでした。もう一度お試しください。');
+    }
+
+    setTimeout(() => {
+      setLoading(false);
+      renderOutput(parsed);
+    }, 400);
+
+  } catch (e) {
+    setLoading(false);
+    showError('エラー: ' + e.message);
+  }
+}
+
+function renderOutput(d) {
+  // タイトル
+  const grid = document.getElementById('titlesGrid');
+  grid.innerHTML = '';
+  (d.titles || []).forEach((t, i) => {
+    const div = document.createElement('div');
+    div.className = 'title-card';
+    div.innerHTML = `<div class="title-num">${i+1}</div><div class="title-text">${escHtml(t)}</div>`;
+    div.onclick = () => copyStr(t, div);
+    grid.appendChild(div);
+  });
+
+  // 目次
+  const tocList = document.getElementById('tocList');
+  tocList.innerHTML = '';
+  const tocLines = [];
+  (d.toc || []).forEach((item, i) => {
+    const li = document.createElement('li');
+    li.textContent = item;
+    tocList.appendChild(li);
+    tocLines.push(`${i+1}. ${item}`);
+  });
+  document.getElementById('tocText').value = tocLines.join('\n');
+
+  // 本文
+  const body = d.body || '';
+  document.getElementById('bodyText').value = body;
+  allParas = body.split(/\n+/).filter(p => p.trim());
+  dividerIdx = detectSplitPoint(allParas);
+  renderBodySplit();
+
+  // 価格
+  const price = parseInt(d.price) || 0;
+  document.getElementById('priceValue').innerHTML = `${price.toLocaleString()}<span>円</span>`;
+  document.getElementById('priceReason').textContent = d.price_reason || '';
+
+  // 見出し画像
+  const kw = document.getElementById('keyword').value.trim();
+  const titleBtns = document.getElementById('thumbTitleBtns');
+  titleBtns.innerHTML = '';
+  (d.titles || []).forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'thumb-select' + (i === 0 ? ' active' : '');
+    btn.textContent = `案${i+1}`;
+    btn.title = t;
+    btn.onclick = () => {
+      document.querySelectorAll('.thumb-select').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      generateThumbnail(t, kw);
+    };
+    titleBtns.appendChild(btn);
+  });
+  generateThumbnail((d.titles || [])[0] || kw, kw);
+
+  // モードに応じて有料エリア表示切替
+  document.getElementById('paywallSection').style.display = articleMode === 'paid' ? '' : 'none';
+  // 無料モードは全文を「無料エリア」に表示
+  if (articleMode === 'free') {
+    document.getElementById('zoneFree').querySelector('.zone-label').textContent = '無料公開（全文）';
+  } else {
+    document.getElementById('zoneFree').querySelector('.zone-label').textContent = '無料公開';
+  }
+
+  document.getElementById('output').classList.add('show');
+  document.getElementById('output').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ================================================================
+   見出し画像生成（Canvas - AI近未来スタイル）
+================================================================ */
+function generateThumbnail(title, keyword) {
+  const canvas = document.getElementById('thumbnailCanvas');
+  const ctx    = canvas.getContext('2d');
+  const W = 1280, H = 670;
+  canvas.width = W; canvas.height = H;
+
+  // 再現性のある疑似乱数（タイトルをシードに）
+  let _s = [...(title + keyword)].reduce((a,c) => a + c.charCodeAt(0), 42);
+  const rng = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 0x100000000; };
+
+  tbBg(ctx, W, H);
+  tbGrid(ctx, W, H);
+  tbNeural(ctx, W, H, rng);
+  tbCircuit(ctx, W, H);
+  tbParticles(ctx, W, H, rng);
+  tbScanlines(ctx, W, H);
+  tbCenterGlow(ctx, W, H);
+  tbTitle(ctx, title, W, H);
+  tbDecorations(ctx, W, H);
+}
+
+function tbBg(ctx, W, H) {
+  const g = ctx.createRadialGradient(W*.5, H*.38, 0, W*.5, H*.6, W*.85);
+  g.addColorStop(0,   '#001c3a');
+  g.addColorStop(0.45,'#000d20');
+  g.addColorStop(1,   '#000208');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function tbGrid(ctx, W, H) {
+  const vx = W/2, vy = H * 0.36;
+  ctx.save();
+  ctx.lineWidth = 0.8;
+
+  // 放射線（床面）
+  for (let i = 0; i <= 28; i++) {
+    const t = i / 28;
+    const bx = t * W;
+    const d = Math.abs(t - 0.5) * 2;
+    ctx.globalAlpha = 0.05 + 0.10 * (1 - d);
+    ctx.strokeStyle = '#00b8ff';
+    ctx.beginPath(); ctx.moveTo(vx, vy); ctx.lineTo(bx, H); ctx.stroke();
+  }
+  // 水平線
+  for (let i = 1; i <= 12; i++) {
+    const t = i / 12;
+    const y = vy + (H - vy) * Math.pow(t, 1.7);
+    const sp = (W / 2) * t;
+    ctx.globalAlpha = 0.04 + 0.07 * t;
+    ctx.beginPath(); ctx.moveTo(vx-sp, y); ctx.lineTo(vx+sp, y); ctx.stroke();
+  }
+  // 天井ライン（上部）
+  for (let i = 1; i <= 6; i++) {
+    const t = i / 6;
+    const y = vy * (1 - Math.pow(t, 1.8));
+    const sp = (W / 2) * t * 0.5;
+    ctx.globalAlpha = 0.02;
+    ctx.beginPath(); ctx.moveTo(vx-sp, y); ctx.lineTo(vx+sp, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function tbNeural(ctx, W, H, rng) {
+  const nodes = [];
+  const N = 24;
+  for (let i = 0; i < N; i++) {
+    let x, y;
+    do { x = rng()*W; y = rng()*H; }
+    while (x > W*.28 && x < W*.72 && y > H*.25 && y < H*.75);
+    nodes.push({ x, y, r: 2.5 + rng()*4.5, blue: rng()>.38 });
+  }
+  ctx.save();
+  // 接続線
+  for (let i = 0; i < N; i++) for (let j = i+1; j < N; j++) {
+    const dx = nodes[i].x-nodes[j].x, dy = nodes[i].y-nodes[j].y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if (dist > 310) continue;
+    const a = (1-dist/310)*0.22;
+    const lg = ctx.createLinearGradient(nodes[i].x,nodes[i].y,nodes[j].x,nodes[j].y);
+    lg.addColorStop(0, `rgba(0,210,255,${a})`);
+    lg.addColorStop(1, `rgba(130,60,255,${a})`);
+    ctx.strokeStyle = lg; ctx.lineWidth = 0.9; ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
+  }
+  // ノード
+  for (const n of nodes) {
+    const c = n.blue ? [0,200,255] : [140,70,255];
+    const ng = ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,n.r*3.5);
+    ng.addColorStop(0, `rgba(${c},0.85)`);
+    ng.addColorStop(0.45,`rgba(${c},0.25)`);
+    ng.addColorStop(1,'transparent');
+    ctx.fillStyle = ng; ctx.globalAlpha = 0.75;
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.r*3.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = `rgb(${c})`; ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.r*.55,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function tbCircuit(ctx, W, H) {
+  const traces = [
+    [[55,110],[140,110],[140,210],[230,210]],
+    [[55,490],[170,490],[170,370],[275,370]],
+    [[90,305],[90,370],[165,370]],
+    [[W-55,145],[W-155,145],[W-155,255],[W-290,255]],
+    [[W-55,510],[W-185,510],[W-185,405],[W-315,405]],
+    [[W-85,320],[W-85,395],[W-215,395]],
+    [[55,240],[130,240],[130,290]],
+    [[W-55,260],[W-130,260],[W-130,310]],
+  ];
+  ctx.save();
+  ctx.strokeStyle='#00aaff'; ctx.lineWidth=1.3;
+  for (const pts of traces) {
+    ctx.globalAlpha = 0.14;
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+    ctx.stroke();
+    ctx.fillStyle='#00ccff'; ctx.globalAlpha=0.38;
+    for (const p of pts) { ctx.beginPath(); ctx.arc(p[0],p[1],3.2,0,Math.PI*2); ctx.fill(); }
+  }
+  ctx.restore();
+}
+
+function tbParticles(ctx, W, H, rng) {
+  ctx.save();
+  for (let i=0;i<70;i++) {
+    let x,y;
+    do { x=rng()*W; y=rng()*H; }
+    while (x>W*.3 && x<W*.7 && y>H*.28 && y<H*.72);
+    const r  = .5+rng()*2.8;
+    const al = .18+rng()*.52;
+    const h  = rng()>.55 ? 275 : 195;
+    ctx.globalAlpha = al;
+    const pg = ctx.createRadialGradient(x,y,0,x,y,r*3.5);
+    pg.addColorStop(0,`hsla(${h},100%,72%,1)`); pg.addColorStop(1,'transparent');
+    ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(x,y,r*3.5,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function tbScanlines(ctx, W, H) {
+  ctx.save(); ctx.globalAlpha=0.025; ctx.fillStyle='#000';
+  for (let y=0;y<H;y+=3) ctx.fillRect(0,y,W,1.8);
+  ctx.restore();
+}
+
+function tbCenterGlow(ctx, W, H) {
+  const g = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,380);
+  g.addColorStop(0,'rgba(190,128,0,.22)');
+  g.addColorStop(.55,'rgba(90,50,0,.07)');
+  g.addColorStop(1,'transparent');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+}
+
+function tbTitle(ctx, title, W, H) {
+  const ff = `"Hiragino Sans","Yu Gothic Medium","Noto Sans JP",sans-serif`;
+  const maxW = W - 180;
+  let fs = 112;
+  ctx.font = `900 ${fs}px ${ff}`;
+  while (ctx.measureText(title).width > maxW && fs > 46) { fs -= 2; ctx.font=`900 ${fs}px ${ff}`; }
+
+  const tx = W/2, ty = H/2 + fs*.36;
+
+  // 外グロー（白）
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.shadowColor='rgba(255,255,255,.5)'; ctx.shadowBlur=80;
+  ctx.fillStyle='rgba(255,255,255,.03)'; ctx.font=`900 ${fs}px ${ff}`;
+  ctx.fillText(title,tx,ty); ctx.restore();
+
+  // 中グロー（金）
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.shadowColor='#FFA000'; ctx.shadowBlur=55;
+  ctx.fillStyle='rgba(255,180,0,.15)'; ctx.font=`900 ${fs}px ${ff}`;
+  ctx.fillText(title,tx,ty); ctx.restore();
+
+  // メイン（金グラデーション）
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.shadowColor='#FF8C00'; ctx.shadowBlur=22;
+  const tg = ctx.createLinearGradient(0,ty-fs,0,ty+16);
+  tg.addColorStop(0,  '#FFFBE0');
+  tg.addColorStop(.22,'#FFE84D');
+  tg.addColorStop(.52,'#FFB800');
+  tg.addColorStop(.78,'#C8780A');
+  tg.addColorStop(1,  '#6A3A00');
+  ctx.fillStyle=tg; ctx.font=`900 ${fs}px ${ff}`;
+  ctx.fillText(title,tx,ty); ctx.restore();
+}
+
+function tbDecorations(ctx, W, H) {
+  // 四隅ブラケット
+  [[22,22,1,1],[W-22,22,-1,1],[22,H-22,1,-1],[W-22,H-22,-1,-1]].forEach(([x,y,sx,sy])=>{
+    ctx.save(); ctx.strokeStyle='#00d4ff'; ctx.lineWidth=2.8;
+    ctx.lineCap='square'; ctx.globalAlpha=.55;
+    ctx.beginPath(); ctx.moveTo(x+sx*52,y); ctx.lineTo(x,y); ctx.lineTo(x,y+sy*52); ctx.stroke();
+    ctx.restore();
+  });
+
+  // 上下の横ライン
+  ctx.save(); ctx.globalAlpha=.32;
+  const hLine = (y) => {
+    const g=ctx.createLinearGradient(0,0,W,0);
+    g.addColorStop(0,'transparent'); g.addColorStop(.25,'#00aaff');
+    g.addColorStop(.75,'#00aaff'); g.addColorStop(1,'transparent');
+    ctx.strokeStyle=g; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  };
+  hLine(42); hLine(H-48); ctx.restore();
+
+  // タイトル下の金ライン
+  const ly = H/2 + 58;
+  ctx.save(); ctx.globalAlpha=.45;
+  const gl=ctx.createLinearGradient(W/2-220,0,W/2+220,0);
+  gl.addColorStop(0,'transparent'); gl.addColorStop(.15,'#FFB800');
+  gl.addColorStop(.85,'#FFB800'); gl.addColorStop(1,'transparent');
+  ctx.strokeStyle=gl; ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(W/2-220,ly); ctx.lineTo(W/2+220,ly); ctx.stroke();
+  ctx.restore();
+
+  // フッターテキスト
+  ctx.save(); ctx.globalAlpha=.3; ctx.fillStyle='#00ccff';
+  ctx.font='400 17px monospace'; ctx.textBaseline='middle';
+  ctx.textAlign='left';  ctx.fillText('AI × KNOWLEDGE', 60, H-28);
+  ctx.textAlign='right'; ctx.fillText('note.com', W-60, H-28);
+  ctx.restore();
+
+  // ヘクサゴン装飾（右上・左下）
+  [[W*.82, H*.18], [W*.18, H*.82]].forEach(([cx,cy])=>{
+    ctx.save(); ctx.globalAlpha=.07; ctx.strokeStyle='#00aaff'; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6; ctx[i?'lineTo':'moveTo'](cx+90*Math.cos(a),cy+90*Math.sin(a));}
+    ctx.closePath(); ctx.stroke(); ctx.restore();
+  });
+}
+
+function downloadThumb() {
+  const canvas = document.getElementById('thumbnailCanvas');
+  const a = document.createElement('a');
+  a.download = 'note_thumbnail.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+/* ---- タグ形式パーサー ---- */
+function parseTagged(text) {
+  const extract = (tag) => {
+    const m = text.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i'));
+    return m ? m[1].trim() : '';
+  };
+  const titlesRaw = extract('TITLES');
+  const tocRaw    = extract('TOC');
+  const body      = extract('BODY');
+  const priceRaw  = extract('PRICE');
+  const priceReason = extract('PRICE_REASON');
+
+  return {
+    titles: titlesRaw.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 3),
+    toc:    tocRaw.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 8),
+    body,
+    price:  parseInt(priceRaw.replace(/[^\d]/g, '')) || 500,
+    price_reason: priceReason,
+  };
+}
+
+/* ---- 無料/有料の境界を自動検出 ----
+   戦略: 見出しの2番目が見つかったらその直前で区切る
+   → イントロ + 第1章が無料、第2章以降が有料
+-------------------------------------------------------- */
+function isHeadingPara(text) {
+  return /^#+\s/.test(text)           // ## 見出し
+      || /^【.+】/.test(text)          // 【章タイトル】
+      || /^■/.test(text)              // ■ 見出し
+      || /^第\d+章/.test(text)        // 第2章…
+      || (text.length < 40 && !/。$/.test(text) && !/、$/.test(text) && /\S/.test(text));
+}
+
+function detectSplitPoint(paras) {
+  let headingCount = 0;
+  for (let i = 0; i < paras.length; i++) {
+    if (isHeadingPara(paras[i])) {
+      headingCount++;
+      if (headingCount === 2) {
+        // 2番目の見出しの直前で区切る（最低1段落は無料に）
+        return Math.max(1, i);
+      }
+    }
+  }
+  // 見出しが1つ以下の場合は先頭25%を無料に
+  return Math.max(1, Math.round(paras.length * 0.25));
+}
+
+/* ---- 無料/有料 分割レンダリング ---- */
+function renderParas(containerId, paras) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  for (const text of paras) {
+    const div = document.createElement('div');
+    div.className = isHeadingPara(text) ? 'para heading' : 'para';
+    div.textContent = text.replace(/^#+\s*/, '');
+    el.appendChild(div);
+  }
+}
+
+function renderBodySplit() {
+  const freeParas = allParas.slice(0, dividerIdx);
+  const paidParas = allParas.slice(dividerIdx);
+
+  renderParas('parasFree', freeParas);
+  renderParas('parasPaid', paidParas);
+
+  const freeLen = freeParas.join('').replace(/\s/g,'').length;
+  const paidLen = paidParas.join('').replace(/\s/g,'').length;
+  const total   = freeLen + paidLen;
+
+  document.getElementById('freeCount').textContent = freeLen.toLocaleString();
+  document.getElementById('paidCount').textContent = paidLen.toLocaleString();
+  document.getElementById('charCount').textContent  = total.toLocaleString();
+
+  // バッジのラベル更新
+  const pct = total > 0 ? Math.round(freeLen / total * 100) : 0;
+  const badge = document.querySelector('.divider-badge');
+  if (badge) badge.textContent = `無料 ${pct}% ／ 有料 ${100-pct}%　ドラッグで変更`;
+}
+
+function paraHtml(text) {
+  const cls = isHeadingPara(text) ? 'para heading' : 'para';
+  return `<div class="${cls}">${escHtml(text.replace(/^#+\s*/, ''))}</div>`;
+}
+
+/* ---- ドラッグ境界移動 ---- */
+function startDrag(e) {
+  e.preventDefault();
+  const wrap = document.getElementById('dividerWrap');
+  wrap.classList.add('dragging');
+
+  const onMove = (ev) => {
+    const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+    moveDividerToY(clientY);
+  };
+  const onUp = () => {
+    wrap.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onUp);
+}
+
+function moveDividerToY(clientY) {
+  // 各段落要素のY位置と比較して最近傍の段落境界を選ぶ
+  const freeEl  = document.getElementById('parasFree');
+  const paidEl  = document.getElementById('parasPaid');
+  const allEls  = [...freeEl.children, ...paidEl.children];
+
+  if (allEls.length === 0) return;
+
+  // 各段落の中央Y座標を取得
+  const mids = allEls.map(el => {
+    const r = el.getBoundingClientRect();
+    return r.top + r.height / 2;
+  });
+
+  // カーソル位置より上にある段落の数 = dividerIdx候補
+  let newIdx = 0;
+  for (let i = 0; i < mids.length; i++) {
+    if (mids[i] < clientY) newIdx = i + 1;
+  }
+
+  // 最低1段落は無料、最低1段落は有料
+  newIdx = Math.max(1, Math.min(allParas.length - 1, newIdx));
+
+  if (newIdx !== dividerIdx) {
+    dividerIdx = newIdx;
+    renderBodySplit();
+  }
+}
+
+/* ---- コピー ---- */
+function copySection(which) {
+  let text = '';
+  if (which === 'free') text = allParas.slice(0, dividerIdx).join('\n\n');
+  else if (which === 'paid') text = allParas.slice(dividerIdx).join('\n\n');
+  else text = allParas.join('\n\n');
+  copyStr(text);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function copyText(id) {
+  copyStr(document.getElementById(id).value);
+}
+
+function copyStr(text, el) {
+  navigator.clipboard.writeText(text).then(() => {
+    if (el) {
+      const orig = el.style.background;
+      el.style.background = '#d4f5ef';
+      setTimeout(() => el.style.background = orig, 600);
+    }
+    showToast('コピーしました！');
+  }).catch(() => alert('コピーに失敗しました。'));
+}
+
+function showToast(msg) {
+  let toast = document.getElementById('copyToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copyToast';
+    toast.style.cssText = `
+      position:fixed; bottom:32px; left:50%; transform:translateX(-50%) translateY(20px);
+      background:#222; color:#fff; padding:12px 28px; border-radius:30px;
+      font-size:15px; font-weight:600; pointer-events:none;
+      opacity:0; transition:opacity .2s, transform .2s; z-index:9999;
+      display:flex; align-items:center; gap:8px; white-space:nowrap;
+      box-shadow:0 4px 16px rgba(0,0,0,.25);
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `<span style="color:#41c9b4;font-size:18px">✓</span> ${msg}`;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 1800);
+}
+</script>
+</body>
+</html>
